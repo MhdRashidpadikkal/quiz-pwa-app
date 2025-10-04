@@ -3,7 +3,7 @@ import { quizQuestions } from './data/quizData';
 import HomeScreen from './components/HomeScreen';
 import QuizScreen from './components/QuizScreen';
 import ResultScreen from './components/ResultScreen';
-import InstallButton from './components/InstallButton';
+import InstallScreen from './components/InstallScreen';
 import { QuizState, QuizAction } from './types';
 
 const initialState: QuizState = {
@@ -56,6 +56,8 @@ const App: React.FC = () => {
   const [state, dispatch] = useReducer(quizReducer, initialState);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [showInstallScreen, setShowInstallScreen] = useState(false);
+  const [installSkipped, setInstallSkipped] = useState(false);
 
   useEffect(() => {
     // Check if app is already installed/running as PWA
@@ -66,21 +68,32 @@ const App: React.FC = () => {
         document.referrer.includes('android-app://');
       
       setIsStandalone(isInStandaloneMode);
-      console.log('Is Standalone Mode:', isInStandaloneMode);
+      console.log('[App] Is Standalone Mode:', isInStandaloneMode);
+
+      // Check if user previously skipped install
+      const skipped = localStorage.getItem('installSkipped') === 'true';
+      setInstallSkipped(skipped);
     };
 
     checkStandalone();
 
     const handleBeforeInstallPrompt = (e: Event) => {
-      console.log('beforeinstallprompt event fired');
+      console.log('[App] beforeinstallprompt event fired');
       e.preventDefault();
       setInstallPrompt(e);
+      
+      // Show install screen if not standalone and not skipped
+      if (!isStandalone && !localStorage.getItem('installSkipped')) {
+        setShowInstallScreen(true);
+      }
     };
 
     const handleAppInstalled = () => {
-      console.log('PWA was installed');
+      console.log('[App] PWA was installed successfully');
       setInstallPrompt(null);
       setIsStandalone(true);
+      setShowInstallScreen(false);
+      localStorage.removeItem('installSkipped');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -90,19 +103,41 @@ const App: React.FC = () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []);
+  }, [isStandalone]);
 
   const handleInstallClick = async () => {
     if (!installPrompt) {
-      console.log('No install prompt available');
+      console.log('[App] No install prompt available');
+      alert('Installation is not available on this device/browser. Try using Chrome or Edge on Android/Desktop.');
       return;
     }
 
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    
-    console.log(`User response to the install prompt: ${outcome}`);
-    setInstallPrompt(null);
+    try {
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      
+      console.log(`[App] User response to install prompt: ${outcome}`);
+      
+      if (outcome === 'accepted') {
+        console.log('[App] User accepted the install prompt');
+        setShowInstallScreen(false);
+      } else {
+        console.log('[App] User dismissed the install prompt');
+      }
+      
+      setInstallPrompt(null);
+    } catch (error) {
+      console.error('[App] Install prompt error:', error);
+    }
+  };
+
+  const handleSkipInstall = () => {
+    console.log('[App] User skipped installation');
+    setShowInstallScreen(false);
+    setInstallSkipped(true);
+    // Remember that user skipped (expires in 7 days)
+    localStorage.setItem('installSkipped', 'true');
+    localStorage.setItem('installSkippedDate', Date.now().toString());
   };
 
   const calculateScore = () => {
@@ -115,6 +150,16 @@ const App: React.FC = () => {
   };
   
   const currentQuestion = state.questions[state.currentIndex];
+
+  // Show install screen if prompt available and not installed/skipped
+  if (showInstallScreen && installPrompt && !isStandalone) {
+    return (
+      <InstallScreen 
+        onInstall={handleInstallClick} 
+        onSkip={handleSkipInstall}
+      />
+    );
+  }
 
   return (
     <main className="h-screen w-screen bg-slate-900 overflow-hidden">
@@ -136,16 +181,6 @@ const App: React.FC = () => {
           total={state.questions.length}
           onRestart={() => dispatch({ type: 'RESTART_QUIZ' })}
         />
-      )}
-      {/* Show install button only if: prompt available AND not in standalone mode */}
-      {installPrompt && !isStandalone && <InstallButton onInstall={handleInstallClick} />}
-      
-      {/* Debug info - Remove in production */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="fixed bottom-4 left-4 bg-black/50 text-white text-xs p-2 rounded">
-          <div>Standalone: {isStandalone ? 'Yes' : 'No'}</div>
-          <div>Install Prompt: {installPrompt ? 'Available' : 'Not Available'}</div>
-        </div>
       )}
     </main>
   );

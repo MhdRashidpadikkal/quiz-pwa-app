@@ -1,16 +1,22 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
+// Service Worker Registration
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
+    navigator.serviceWorker
+      .register('/service-worker.js')
       .then(registration => {
-        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+        console.log('[App] ServiceWorker registered successfully:', registration.scope);
+        
+        // Check for updates periodically
+        setInterval(() => {
+          registration.update();
+        }, 60000); // Check every minute
       })
       .catch(error => {
-        console.log('ServiceWorker registration failed: ', error);
+        console.error('[App] ServiceWorker registration failed:', error);
       });
   });
 }
