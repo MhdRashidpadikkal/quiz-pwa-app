@@ -1,4 +1,3 @@
-
 import React, { useEffect, useReducer, useState } from 'react';
 import { quizQuestions } from './data/quizData';
 import HomeScreen from './components/HomeScreen';
@@ -55,34 +54,55 @@ function quizReducer(state: QuizState, action: QuizAction): QuizState {
 
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(quizReducer, initialState);
-  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      // Don't show the prompt if the app is already in standalone mode
-      if (!window.matchMedia('(display-mode: standalone)').matches) {
-         setInstallPrompt(e);
-      }
+    // Check if app is already installed/running as PWA
+    const checkStandalone = () => {
+      const isInStandaloneMode = 
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true ||
+        document.referrer.includes('android-app://');
+      
+      setIsStandalone(isInStandaloneMode);
+      console.log('Is Standalone Mode:', isInStandaloneMode);
     };
+
+    checkStandalone();
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      console.log('beforeinstallprompt event fired');
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      console.log('PWA was installed');
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
-  const handleInstallClick = () => {
-    if (installPrompt && 'prompt' in installPrompt) {
-      (installPrompt as any).prompt();
-      (installPrompt as any).userChoice.then((choiceResult: { outcome: string }) => {
-        if (choiceResult.outcome === 'accepted') {
-          console.log('User accepted the install prompt');
-        } else {
-          console.log('User dismissed the install prompt');
-        }
-        setInstallPrompt(null);
-      });
+  const handleInstallClick = async () => {
+    if (!installPrompt) {
+      console.log('No install prompt available');
+      return;
     }
+
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    
+    console.log(`User response to the install prompt: ${outcome}`);
+    setInstallPrompt(null);
   };
 
   const calculateScore = () => {
@@ -117,7 +137,16 @@ const App: React.FC = () => {
           onRestart={() => dispatch({ type: 'RESTART_QUIZ' })}
         />
       )}
-      {installPrompt && <InstallButton onInstall={handleInstallClick} />}
+      {/* Show install button only if: prompt available AND not in standalone mode */}
+      {installPrompt && !isStandalone && <InstallButton onInstall={handleInstallClick} />}
+      
+      {/* Debug info - Remove in production */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 left-4 bg-black/50 text-white text-xs p-2 rounded">
+          <div>Standalone: {isStandalone ? 'Yes' : 'No'}</div>
+          <div>Install Prompt: {installPrompt ? 'Available' : 'Not Available'}</div>
+        </div>
+      )}
     </main>
   );
 };
